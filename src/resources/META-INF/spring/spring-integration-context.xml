@@ -1,0 +1,93 @@
+<!--
+
+    Licensed to the Apache Software Foundation (ASF) under one or more
+    contributor license agreements.  See the NOTICE file distributed with
+    this work for additional information regarding copyright ownership.
+    The ASF licenses this file to You under the Apache License, Version 2.0
+    (the "License"); you may not use this file except in compliance with
+    the License.  You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+    Unless required by applicable law or agreed to in writing, software
+    distributed under the License is distributed on an "AS IS" BASIS,
+    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+    See the License for the specific language governing permissions and
+    limitations under the License.
+-->
+<beans xmlns="http://www.springframework.org/schema/beans"
+       xmlns:int="http://www.springframework.org/schema/integration"
+       xmlns:jms="http://www.springframework.org/schema/integration/jms"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xsi:schemaLocation="http://www.springframework.org/schema/beans
+        http://www.springframework.org/schema/beans/spring-beans.xsd
+        http://www.springframework.org/schema/integration
+        http://www.springframework.org/schema/integration/spring-integration-4.0.xsd
+        http://www.springframework.org/schema/integration/jms
+        http://www.springframework.org/schema/integration/jms/spring-integration-jms-4.0.xsd">
+
+    <!-- Channel -->
+    <int:channel id="channelStart"/>
+    <int:channel id="channelSplitIn"/>
+    <int:channel id="channelSplitOut"/>
+    <int:channel id="channelRouterIn"/>
+    <int:channel id="channelFacebook"/>
+    <int:channel id="channelTwitter"/>
+    <int:channel id="channelInstagram"/>
+    <int:channel id="channelPostProcessOut"/>
+    <int:channel id="channelAggregateIn"/>
+    <int:channel id="channelAggregateOut"/>
+    <int:channel id="channelSystemPrint"/>
+    <int:channel id="errorChannel"/>
+
+    <!-- ActiveMQ -->
+    <bean id="connectionFactory" class="org.apache.activemq.ActiveMQConnectionFactory">
+        <property name="brokerURL" value="tcp://localhost:61616"/>
+    </bean>
+
+    <jms:outbound-channel-adapter channel="channelStart" destination-name="SpringIntegrationQueueStart"/>
+    <jms:message-driven-channel-adapter channel="channelSplitIn" destination-name="SpringIntegrationQueueStart"/>
+
+    <int:splitter input-channel="channelSplitIn" output-channel="channelSplitOut">
+        <bean class="jp.biglobe.springintegration.eip.MySplitter" />
+    </int:splitter>
+
+    <jms:outbound-channel-adapter channel="channelSplitOut" destination-name="SpringIntegrationQueueSplitted"/>
+    <jms:message-driven-channel-adapter channel="channelRouterIn" destination-name="SpringIntegrationQueueSplitted"/>
+
+    <int:router input-channel="channelRouterIn">
+        <bean class="jp.biglobe.springintegration.eip.MyRouter" />
+    </int:router>
+
+    <int:service-activator input-channel="channelFacebook" output-channel="channelPostProcessOut" method="process">
+        <bean class="jp.biglobe.springintegration.processor.MyFacebookProcessor" />
+    </int:service-activator>
+
+    <int:service-activator input-channel="channelTwitter" output-channel="channelPostProcessOut" method="process">
+        <bean class="jp.biglobe.springintegration.processor.MyTwitterProcessor" />
+    </int:service-activator>
+
+    <int:service-activator input-channel="channelInstagram" output-channel="channelPostProcessOut" method="process">
+        <bean class="jp.biglobe.springintegration.processor.MyInstagramProcessor" />
+    </int:service-activator>
+
+    <jms:outbound-channel-adapter channel="channelPostProcessOut" destination-name="SpringIntegrationQueuePostProcess"/>
+    <jms:message-driven-channel-adapter channel="channelAggregateIn" destination-name="SpringIntegrationQueuePostProcess"/>
+
+    <int:aggregator input-channel="channelAggregateIn" output-channel="channelAggregateOut"
+                    correlation-strategy="myCorrelationStrategy" release-strategy="myReleaseStrategy">
+        <bean class="jp.biglobe.springintegration.eip.MyAggregator" />
+    </int:aggregator>
+    <bean id="myCorrelationStrategy" class="jp.biglobe.springintegration.eip.MyCorrelationStrategy" />
+    <bean id="myReleaseStrategy" class="jp.biglobe.springintegration.eip.MyReleaseStrategy" />
+
+    <jms:outbound-channel-adapter channel="channelAggregateOut" destination-name="SpringIntegrationQueueAggregated"/>
+    <jms:message-driven-channel-adapter channel="channelSystemPrint" destination-name="SpringIntegrationQueueAggregated"/>
+
+    <int:service-activator input-channel="channelSystemPrint" method="process">
+        <bean class="jp.biglobe.springintegration.processor.MySystemPrinter" />
+    </int:service-activator>
+
+    <jms:message-driven-channel-adapter channel="errorChannel" destination-name="SpringIntegrationQueueError"/>
+
+</beans>
